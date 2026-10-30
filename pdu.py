@@ -11,6 +11,9 @@ variables take precedence):
     UNIFI_PASS   local password
     UNIFI_SITE   site name (default: "default")
 
+The login session is cached in ~/.cache/pdu-control/session.json and reused across runs,
+so repeated invocations don't hit the console's login rate limit.
+
 Usage:
     pdu.py list
     pdu.py on 3
@@ -20,7 +23,7 @@ Add --mac aa:bb:cc:dd:ee:ff if more than one outlet-capable device is adopted.
 """
 
 import argparse
-import http.cookiejar
+import http.cookies
 import json
 import os
 import ssl
@@ -51,41 +54,92 @@ def load_dotenv(path):
         os.environ.setdefault(key, value)
 
 
+SESSION_FILE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                            "pdu-control", "session.json")
+
+
 class UniFi:
-    def __init__(self, host, user, password, site="default"):
+    def __init__(self, host, user, password, site="default", session_file=SESSION_FILE):
         self.base = f"https://{host}"
+        self.host = host
         self.site = site
         self.user = user
         self.password = password
+        self.session_file = session_file
+        self.cookies = {}
         self.csrf = None
         # UniFi OS consoles ship with a self-signed certificate.
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=ctx),
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
-        )
+        self.opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        self._load_session()
 
-    def _request(self, method, path, body=None):
+    def _load_session(self):
+        try:
+            with open(self.session_file, encoding="utf-8") as f:
+                saved = json.load(f)
+        except (OSError, ValueError):
+            return
+        # Only reuse a session that belongs to the same console and account.
+        if saved.get("host") == self.host and saved.get("user") == self.user:
+            self.cookies = saved.get("cookies", {})
+            self.csrf = saved.get("csrf")
+
+    def _save_session(self):
+        os.makedirs(os.path.dirname(self.session_file), mode=0o700, exist_ok=True)
+        # The token grants console access, so keep the file private to the current user.
+        fd = os.open(self.session_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"host": self.host, "user": self.user,
+                       "cookies": self.cookies, "csrf": self.csrf}, f)
+
+    def _send(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
         req.add_header("Content-Type", "application/json")
+        if self.cookies:
+            req.add_header("Cookie", "; ".join(f"{k}={v}" for k, v in self.cookies.items()))
         if self.csrf:
             req.add_header("X-CSRF-Token", self.csrf)
-        try:
-            with self.opener.open(req, timeout=15) as resp:
-                token = resp.headers.get("X-Updated-CSRF-Token") or resp.headers.get("X-CSRF-Token")
-                if token:
-                    self.csrf = token
-                raw = resp.read()
-        except urllib.error.HTTPError as e:
-            sys.exit(f"{method} {path} -> HTTP {e.code}: {e.read().decode(errors='replace')}")
+        with self.opener.open(req, timeout=15) as resp:
+            for header in resp.headers.get_all("Set-Cookie") or []:
+                cookie = http.cookies.SimpleCookie()
+                cookie.load(header)
+                self.cookies.update({k: m.value for k, m in cookie.items()})
+            token = resp.headers.get("X-Updated-CSRF-Token") or resp.headers.get("X-CSRF-Token")
+            if token:
+                self.csrf = token
+            raw = resp.read()
+        self._save_session()
         return json.loads(raw) if raw else {}
 
+    def _request(self, method, path, body=None):
+        try:
+            if not self.cookies:
+                self.login()
+            try:
+                return self._send(method, path, body)
+            except urllib.error.HTTPError as e:
+                if e.code != 401:
+                    raise
+            # Cached session expired: log in once and retry.
+            self.login()
+            return self._send(method, path, body)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                sys.exit("Login rate limit reached on the console (HTTP 429); wait a while before retrying.")
+            sys.exit(f"{method} {path} -> HTTP {e.code}: {e.read().decode(errors='replace')}")
+
     def login(self):
-        self._request("POST", "/api/auth/login",
-                      {"username": self.user, "password": self.password, "remember": False})
+        self.cookies, self.csrf = {}, None
+        try:
+            self._send("POST", "/api/auth/login",
+                       {"username": self.user, "password": self.password, "remember": True})
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 401, 403):
+                sys.exit(f"Login failed (HTTP {e.code}): check UNIFI_USER/UNIFI_PASS and that it is a local account.")
+            raise
 
     def devices(self):
         return self._request("GET", f"/proxy/network/api/s/{self.site}/stat/device")["data"]
@@ -149,7 +203,6 @@ def main():
                     os.environ.get("UNIFI_SITE", "default"))
     except KeyError as e:
         sys.exit(f"Missing environment variable {e}")
-    api.login()
     pdu = find_pdu(api.devices(), args.mac)
 
     if args.cmd == "list":

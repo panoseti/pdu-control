@@ -150,3 +150,4 @@ Rack PDU  model=<型号>  mac=aa:bb:cc:dd:ee:ff
 - 首次测试请选一个不重要的插座，**不要关闭给 UCG-Fiber 或交换机供电的插座**，否则网络会中断，脚本也无法再把它打开。
 - `cycle` 是先关、等待、再开的两步操作；如果中途脚本被中断，插座会停留在关闭状态。
 - 遇到 `HTTP 401/403` 请检查账号是否为本地账号且有 Network 管理员权限。
+- 控制台对登录次数有限制（`HTTP 429`，`AUTHENTICATION_FAILED_LIMIT_REACHED`）。为避免触发，脚本会把登录会话缓存在 `~/.cache/pdu-control/session.json`（权限 `600`），仅在会话过期时才重新登录。删除该文件可强制重新登录。如果已经触发限制，请等待一段时间再试。

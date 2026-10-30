@@ -150,3 +150,4 @@ Rack PDU  model=<model>  mac=aa:bb:cc:dd:ee:ff
 - Use a non-critical outlet for your first test. **Do not switch off the outlet powering the UCG-Fiber or your switches**, or the network will go down and the script will be unable to turn it back on.
 - `cycle` is a two-step operation (off, wait, on). If the script is interrupted midway, the outlet stays off.
 - If you get `HTTP 401/403`, check that the account is a local account with Network management permission.
+- The console rate-limits logins (`HTTP 429`, `AUTHENTICATION_FAILED_LIMIT_REACHED`). To avoid this, the script caches its login session in `~/.cache/pdu-control/session.json` (permissions `600`) and only logs in again when the session expires. Delete this file to force a fresh login. If you do hit the limit, wait a while before retrying.
