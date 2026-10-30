@@ -128,7 +128,10 @@ The console uses a self-signed certificate, so the script does not verify TLS ce
 ./pdu.py off 3                # turn outlet 3 off
 ./pdu.py cycle 3              # power off for 5 seconds, then back on
 ./pdu.py cycle 3 --delay 10   # custom off duration (seconds)
+./pdu.py rename 3 "NAS"       # rename outlet 3 (quote names containing spaces)
 ```
+
+Renaming only changes the name; the outlet's on/off state is left untouched. Like `on`/`off`, it requires Network management permission.
 
 If the console has adopted more than one outlet-capable device (e.g. SmartPower plugs as well), select the PDU with `--mac`:
 

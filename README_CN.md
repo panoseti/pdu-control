@@ -128,7 +128,10 @@ cp .env.example .env
 ./pdu.py off 3                # 关闭 3 号插座
 ./pdu.py cycle 3              # 断电 5 秒后重新上电
 ./pdu.py cycle 3 --delay 10   # 自定义断电时长（秒）
+./pdu.py rename 3 "NAS"       # 将 3 号插座重命名（名称含空格时请加引号）
 ```
+
+重命名只修改名称，不会改变插座的开关状态。与 `on` / `off` 一样，需要 Network 管理权限。
 
 如果控制台下接管了多个带插座的设备（例如还有 SmartPower 插座），需要用 `--mac` 指定 PDU：
 

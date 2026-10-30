@@ -19,6 +19,7 @@ Usage:
     pdu.py on 3
     pdu.py off 3
     pdu.py cycle 3 --delay 10
+    pdu.py rename 3 "NAS"
 Add --mac aa:bb:cc:dd:ee:ff if more than one outlet-capable device is adopted.
 """
 
@@ -174,7 +175,8 @@ def print_outlets(pdu):
         print(f"  {o['index']:>2}  {state}  {o.get('name', ''):<24} {power}")
 
 
-def set_relay(api, pdu, index, on):
+def update_outlet(api, pdu, index, **fields):
+    """Change override fields (relay_state, name, ...) of one outlet, keeping the rest as they are."""
     outlets = {o["index"]: o for o in pdu["outlet_table"]}
     if index not in outlets:
         sys.exit(f"Outlet {index} does not exist (valid: {sorted(outlets)})")
@@ -182,10 +184,13 @@ def set_relay(api, pdu, index, on):
     overrides = [dict(o) for o in pdu.get("outlet_overrides", [])]
     entry = next((o for o in overrides if o["index"] == index), None)
     if entry is None:
-        entry = {"index": index, "name": outlets[index].get("name", f"Outlet {index}"),
-                 "cycle_enabled": outlets[index].get("cycle_enabled", False)}
+        # Seed from the current state so changing one field doesn't reset the others.
+        current = outlets[index]
+        entry = {"index": index, "name": current.get("name", f"Outlet {index}"),
+                 "relay_state": current.get("relay_state", True),
+                 "cycle_enabled": current.get("cycle_enabled", False)}
         overrides.append(entry)
-    entry["relay_state"] = on
+    entry.update(fields)
     api.set_outlet_overrides(pdu["_id"], overrides)
     pdu["outlet_overrides"] = overrides
 
@@ -200,7 +205,12 @@ def main():
     cyc = sub.add_parser("cycle")
     cyc.add_argument("outlet", type=int)
     cyc.add_argument("--delay", type=float, default=5, help="seconds to stay off (default 5)")
+    ren = sub.add_parser("rename")
+    ren.add_argument("outlet", type=int)
+    ren.add_argument("name", help="new outlet name (quote it if it contains spaces)")
     args = p.parse_args()
+    if args.cmd == "rename" and not args.name.strip():
+        p.error("name must not be empty")
 
     load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
     try:
@@ -213,14 +223,17 @@ def main():
     if args.cmd == "list":
         print_outlets(pdu)
     elif args.cmd in ("on", "off"):
-        set_relay(api, pdu, args.outlet, args.cmd == "on")
+        update_outlet(api, pdu, args.outlet, relay_state=args.cmd == "on")
         print(f"Outlet {args.outlet} -> {args.cmd.upper()}")
     elif args.cmd == "cycle":
-        set_relay(api, pdu, args.outlet, False)
+        update_outlet(api, pdu, args.outlet, relay_state=False)
         print(f"Outlet {args.outlet} -> OFF, waiting {args.delay}s")
         time.sleep(args.delay)
-        set_relay(api, pdu, args.outlet, True)
+        update_outlet(api, pdu, args.outlet, relay_state=True)
         print(f"Outlet {args.outlet} -> ON")
+    elif args.cmd == "rename":
+        update_outlet(api, pdu, args.outlet, name=args.name.strip())
+        print(f"Outlet {args.outlet} -> renamed to {args.name.strip()!r}")
 
 
 if __name__ == "__main__":
