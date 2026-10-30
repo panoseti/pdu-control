@@ -99,6 +99,24 @@ export UNIFI_USER=pdu-admin
 export UNIFI_PASS='your-password'
 ```
 
+### 使用 `.env` 文件
+
+也可以不手动 export，而是复制模板并填入真实值：
+
+```bash
+cp .env.example .env
+# 编辑 .env：填写 UNIFI_HOST、UNIFI_USER、UNIFI_PASS
+```
+
+脚本不会自动读取 `.env`，运行前需要先加载到当前 shell：
+
+```bash
+set -a; source .env; set +a
+./pdu.py list
+```
+
+`.env` 已加入 `.gitignore`，不会被提交到 git；仓库中只保存不含真实密码的 `.env.example`。
+
 控制台使用自签名证书，脚本默认不校验 TLS 证书。
 
 ## 用法

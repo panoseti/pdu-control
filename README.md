@@ -99,6 +99,24 @@ export UNIFI_USER=pdu-admin
 export UNIFI_PASS='your-password'
 ```
 
+### Using a `.env` file
+
+Instead of exporting variables by hand, copy the template and fill in real values:
+
+```bash
+cp .env.example .env
+# edit .env: set UNIFI_HOST, UNIFI_USER, UNIFI_PASS
+```
+
+The script does not read `.env` on its own; load it into the current shell first:
+
+```bash
+set -a; source .env; set +a
+./pdu.py list
+```
+
+`.env` is listed in `.gitignore`, so your credentials will not be committed. Only `.env.example` (placeholder values) is tracked.
+
 The console uses a self-signed certificate, so the script does not verify TLS certificates.
 
 ## Usage
