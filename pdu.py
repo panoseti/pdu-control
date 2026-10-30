@@ -23,7 +23,6 @@ Add --mac aa:bb:cc:dd:ee:ff if more than one outlet-capable device is adopted.
 """
 
 import argparse
-import http.cookies
 import json
 import os
 import ssl
@@ -104,9 +103,11 @@ class UniFi:
             req.add_header("X-CSRF-Token", self.csrf)
         with self.opener.open(req, timeout=15) as resp:
             for header in resp.headers.get_all("Set-Cookie") or []:
-                cookie = http.cookies.SimpleCookie()
-                cookie.load(header)
-                self.cookies.update({k: m.value for k, m in cookie.items()})
+                # Only the leading name=value pair matters. SimpleCookie is not used because it
+                # silently drops the whole header when it meets an attribute it doesn't know.
+                name, sep, value = header.split(";", 1)[0].partition("=")
+                if sep:
+                    self.cookies[name.strip()] = value.strip()
             token = resp.headers.get("X-Updated-CSRF-Token") or resp.headers.get("X-CSRF-Token")
             if token:
                 self.csrf = token
@@ -116,12 +117,14 @@ class UniFi:
 
     def _request(self, method, path, body=None):
         try:
-            if not self.cookies:
+            fresh = not self.cookies
+            if fresh:
                 self.login()
             try:
                 return self._send(method, path, body)
             except urllib.error.HTTPError as e:
-                if e.code != 401:
+                # A 401 right after a fresh login won't be fixed by logging in again.
+                if e.code != 401 or fresh:
                     raise
             # Cached session expired: log in once and retry.
             self.login()
@@ -140,6 +143,8 @@ class UniFi:
             if e.code in (400, 401, 403):
                 sys.exit(f"Login failed (HTTP {e.code}): check UNIFI_USER/UNIFI_PASS and that it is a local account.")
             raise
+        if not self.cookies:
+            sys.exit("Login succeeded but the console returned no session cookie.")
 
     def devices(self):
         return self._request("GET", f"/proxy/network/api/s/{self.site}/stat/device")["data"]
