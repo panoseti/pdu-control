@@ -29,6 +29,7 @@ import os
 import ssl
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -167,12 +168,24 @@ def find_pdu(devices, mac=None):
     return candidates[0]
 
 
+def display_width(text):
+    """Terminal column width: CJK/fullwidth characters take 2 columns, combining marks 0."""
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in "WF" else 1
+               for c in text)
+
+
+def pad(text, width):
+    return text + " " * max(0, width - display_width(text))
+
+
 def print_outlets(pdu):
     print(f"{pdu.get('name', pdu.get('model'))}  model={pdu.get('model')}  mac={pdu.get('mac')}")
-    for o in sorted(pdu["outlet_table"], key=lambda o: o["index"]):
+    outlets = sorted(pdu["outlet_table"], key=lambda o: o["index"])
+    name_width = max([24] + [display_width(o.get("name", "")) for o in outlets])
+    for o in outlets:
         state = "ON " if o.get("relay_state") else "OFF"
         power = f"{o['outlet_power']} W" if "outlet_power" in o else ""
-        print(f"  {o['index']:>2}  {state}  {o.get('name', ''):<24} {power}")
+        print(f"  {o['index']:>2}  {state}  {pad(o.get('name', ''), name_width)} {power}")
 
 
 def update_outlet(api, pdu, index, **fields):
