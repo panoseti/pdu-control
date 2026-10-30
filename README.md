@@ -1,29 +1,97 @@
 # pdu-control
 
-在局域网内控制 UniFi Power Distribution Pro（USP-PDU-Pro）的命令行脚本。通过 UniFi OS 控制台（如 UCG-Fiber）内置 Network 应用的本地 API 操作，不经过 Ubiquiti 云。
+English | [简体中文](README_CN.md)
 
-只依赖 Python 3 标准库，无需安装第三方包。
+A command-line script for controlling a UniFi Power Distribution Pro (USP-PDU-Pro) over the local network. It talks to the local API of the Network application built into a UniFi OS console (e.g. UCG-Fiber), without going through the Ubiquiti cloud.
 
-> 注意：脚本使用的是 UniFi Network 的非官方本地 API，尚未在真实设备上完整验证，固件升级后接口可能变化。
+Requires Python 3.14 or later. Uses only the standard library; no third-party packages are needed.
 
-## 前提条件
+> Note: the script relies on UniFi Network's unofficial local API. It has not been fully verified on real hardware, and the API may change after firmware upgrades.
 
-- PDU Pro 已被局域网内的 UniFi 控制台（UCG-Fiber、UDM 等）接管
-- 运行脚本的机器能访问控制台的 HTTPS 端口
-- 控制台上有一个**本地账号**（不能用 Ubiquiti 云/SSO 账号），并具有 Network 应用的管理员权限
+## Installation
 
-创建本地账号：UniFi OS → Admins & Users → 添加管理员，选择 "Restrict to local access only"，并为 Network 分配 Admin 角色。
+### Python version
 
-## 配置
+**Python 3.14 or later** is required. Check your current version:
 
-通过环境变量提供连接信息：
+```bash
+python3 --version
+```
 
-| 变量 | 说明 | 默认值 |
+If it is older than 3.14, install a newer one using any of the following:
+
+```bash
+# uv (cross-platform, recommended)
+uv python install 3.14
+uv run --python 3.14 ./pdu.py list
+
+# pyenv
+pyenv install 3.14
+pyenv local 3.14
+
+# Fedora
+sudo dnf install python3.14
+
+# macOS (Homebrew)
+brew install python@3.14
+```
+
+On Windows, download the 3.14 installer from [python.org](https://www.python.org/downloads/).
+
+### Dependencies
+
+The script only uses the Python standard library (`urllib`, `http.cookiejar`, `ssl`, `json`, `argparse`, etc.). **No `pip install` is required**, and no virtual environment is needed.
+
+### Getting the script
+
+```bash
+git clone <repository-url> pdu-control
+cd pdu-control
+chmod +x pdu.py
+```
+
+If your default `python3` is older than 3.14, run the script with an explicit interpreter:
+
+```bash
+python3.14 ./pdu.py list
+```
+
+## Prerequisites
+
+- The PDU Pro is adopted by a UniFi console (UCG-Fiber, UDM, etc.) on your LAN
+- The machine running the script can reach the console's HTTPS port
+- A **local account** exists on the console (Ubiquiti cloud/SSO accounts will not work); see permissions below
+
+To create a local account: UniFi OS → Admins & Users → add an admin, select "Restrict to local access only", and assign an appropriate role for the Network application.
+
+## Account permissions
+
+The script only needs permissions for the Network application. It does not need UniFi OS Super Admin/Owner, nor access to other applications such as Protect or Access.
+
+| Operation | Required permission |
+| --- | --- |
+| `list` (view outlet state and power) | Network View Only should be sufficient |
+| `on` / `off` / `cycle` (switch outlets) | Network management permission |
+
+Switching an outlet is done by updating the device's `outlet_overrides` via `PUT rest/device/<id>`. This is a write operation, so a read-only account will receive 401/403.
+
+Network role names and granularity vary between UniFi OS versions. Whether a limited role between View Only and full management can switch outlets has not been verified. Follow the principle of least privilege:
+
+1. Start with a read-only account and run `./pdu.py list`; keep using it if you only need monitoring
+2. When switching is needed, start from the lowest writable role and test `off` / `on` on a non-critical outlet, raising the role step by step if you get 403
+
+Create a dedicated account for the script rather than using your personal account, so it can be revoked and audited independently.
+
+## Configuration
+
+Connection settings are provided through environment variables:
+
+| Variable | Description | Default |
 | --- | --- | --- |
-| `UNIFI_HOST` | 控制台地址，如 `192.168.1.1` | 必填 |
-| `UNIFI_USER` | 本地账号用户名 | 必填 |
-| `UNIFI_PASS` | 本地账号密码 | 必填 |
-| `UNIFI_SITE` | 站点名 | `default` |
+| `UNIFI_HOST` | Console address, e.g. `192.168.1.1` | required |
+| `UNIFI_USER` | Local account username | required |
+| `UNIFI_PASS` | Local account password | required |
+| `UNIFI_SITE` | Site name | `default` |
 
 ```bash
 export UNIFI_HOST=192.168.1.1
@@ -31,35 +99,35 @@ export UNIFI_USER=pdu-admin
 export UNIFI_PASS='your-password'
 ```
 
-控制台使用自签名证书，脚本默认不校验 TLS 证书。
+The console uses a self-signed certificate, so the script does not verify TLS certificates.
 
-## 用法
+## Usage
 
 ```bash
-./pdu.py list                 # 列出所有插座的编号、状态、名称和功率
-./pdu.py on 3                 # 打开 3 号插座
-./pdu.py off 3                # 关闭 3 号插座
-./pdu.py cycle 3              # 断电 5 秒后重新上电
-./pdu.py cycle 3 --delay 10   # 自定义断电时长（秒）
+./pdu.py list                 # list outlets with index, state, name and power
+./pdu.py on 3                 # turn outlet 3 on
+./pdu.py off 3                # turn outlet 3 off
+./pdu.py cycle 3              # power off for 5 seconds, then back on
+./pdu.py cycle 3 --delay 10   # custom off duration (seconds)
 ```
 
-如果控制台下接管了多个带插座的设备（例如还有 SmartPower 插座），需要用 `--mac` 指定 PDU：
+If the console has adopted more than one outlet-capable device (e.g. SmartPower plugs as well), select the PDU with `--mac`:
 
 ```bash
 ./pdu.py --mac aa:bb:cc:dd:ee:ff list
 ```
 
-`list` 输出示例（型号字段以控制器实际返回为准）：
+Example `list` output (the model field is whatever the controller reports):
 
 ```
-Rack PDU  model=<型号>  mac=aa:bb:cc:dd:ee:ff
+Rack PDU  model=<model>  mac=aa:bb:cc:dd:ee:ff
    1  ON   NAS                      42.1 W
    2  OFF  Outlet 2
    ...
 ```
 
-## 注意事项
+## Caveats
 
-- 首次测试请选一个不重要的插座，**不要关闭给 UCG-Fiber 或交换机供电的插座**，否则网络会中断，脚本也无法再把它打开。
-- `cycle` 是先关、等待、再开的两步操作；如果中途脚本被中断，插座会停留在关闭状态。
-- 遇到 `HTTP 401/403` 请检查账号是否为本地账号且有 Network 管理员权限。
+- Use a non-critical outlet for your first test. **Do not switch off the outlet powering the UCG-Fiber or your switches**, or the network will go down and the script will be unable to turn it back on.
+- `cycle` is a two-step operation (off, wait, on). If the script is interrupted midway, the outlet stays off.
+- If you get `HTTP 401/403`, check that the account is a local account with Network management permission.
