@@ -4,7 +4,8 @@
 Only uses the Python standard library. Credentials must be a *local* UniFi OS user
 with admin rights on the Network application (cloud/SSO accounts can't log in locally).
 
-Environment:
+Environment (also read from a .env file next to this script; real environment
+variables take precedence):
     UNIFI_HOST   console address, e.g. 192.168.1.1
     UNIFI_USER   local username
     UNIFI_PASS   local password
@@ -27,6 +28,27 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+
+def load_dotenv(path):
+    """Load KEY=VALUE lines from path into os.environ without overriding existing variables."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").strip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
 
 
 class UniFi:
@@ -121,6 +143,7 @@ def main():
     cyc.add_argument("--delay", type=float, default=5, help="seconds to stay off (default 5)")
     args = p.parse_args()
 
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
     try:
         api = UniFi(os.environ["UNIFI_HOST"], os.environ["UNIFI_USER"], os.environ["UNIFI_PASS"],
                     os.environ.get("UNIFI_SITE", "default"))

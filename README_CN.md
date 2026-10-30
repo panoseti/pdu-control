@@ -108,12 +108,13 @@ cp .env.example .env
 # 编辑 .env：填写 UNIFI_HOST、UNIFI_USER、UNIFI_PASS
 ```
 
-脚本不会自动读取 `.env`，运行前需要先加载到当前 shell：
+脚本启动时会自动读取 `pdu.py` 所在目录下的 `.env`，因此在任意工作目录下都可以直接运行：
 
 ```bash
-set -a; source .env; set +a
 ./pdu.py list
 ```
+
+环境中已存在的变量优先于 `.env`，可以临时覆盖某一项，例如 `UNIFI_HOST=10.0.0.1 ./pdu.py list`。支持的格式：`KEY=VALUE` 行、`#` 注释、可选的 `export ` 前缀以及可选的引号。
 
 `.env` 已加入 `.gitignore`，不会被提交到 git；仓库中只保存不含真实密码的 `.env.example`。
 

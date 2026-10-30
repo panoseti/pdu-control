@@ -108,12 +108,13 @@ cp .env.example .env
 # edit .env: set UNIFI_HOST, UNIFI_USER, UNIFI_PASS
 ```
 
-The script does not read `.env` on its own; load it into the current shell first:
+On startup the script automatically loads `.env` from the directory containing `pdu.py`, so you can run it directly from any working directory:
 
 ```bash
-set -a; source .env; set +a
 ./pdu.py list
 ```
+
+Variables already set in the environment take precedence over `.env`, so you can override a single value for one run, e.g. `UNIFI_HOST=10.0.0.1 ./pdu.py list`. Supported syntax: `KEY=VALUE` lines, `#` comments, optional `export ` prefix and optional surrounding quotes.
 
 `.env` is listed in `.gitignore`, so your credentials will not be committed. Only `.env.example` (placeholder values) is tracked.
 
