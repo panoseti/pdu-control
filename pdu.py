@@ -10,6 +10,7 @@ variables take precedence):
     UNIFI_USER   local username
     UNIFI_PASS   local password
     UNIFI_SITE   site name (default: "default")
+--user / --password override UNIFI_USER / UNIFI_PASS.
 
 The login session is cached in ~/.cache/pdu-control/session.json and reused across runs,
 so repeated invocations don't hit the console's login rate limit.
@@ -20,7 +21,9 @@ Usage:
     pdu.py off 3
     pdu.py cycle 3 --delay 10
     pdu.py rename 3 "NAS"
+    pdu.py --user pdu-admin --password secret list
 Add --mac aa:bb:cc:dd:ee:ff if more than one outlet-capable device is adopted.
+Global options (--mac, --user, --password) go before the subcommand.
 """
 
 import argparse
@@ -143,7 +146,7 @@ class UniFi:
                        {"username": self.user, "password": self.password, "remember": True})
         except urllib.error.HTTPError as e:
             if e.code in (400, 401, 403):
-                sys.exit(f"Login failed (HTTP {e.code}): check UNIFI_USER/UNIFI_PASS and that it is a local account.")
+                sys.exit(f"Login failed (HTTP {e.code}): check the username/password (--user/--password or UNIFI_USER/UNIFI_PASS) and that it is a local account.")
             raise
         if not self.cookies:
             sys.exit("Login succeeded but the console returned no session cookie.")
@@ -211,6 +214,8 @@ def update_outlet(api, pdu, index, **fields):
 def main():
     p = argparse.ArgumentParser(description="UniFi Power Distribution Pro local control")
     p.add_argument("--mac", help="MAC of the PDU if several outlet devices are adopted")
+    p.add_argument("--user", help="local console username (overrides UNIFI_USER)")
+    p.add_argument("--password", help="local console password (overrides UNIFI_PASS)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
     for name in ("on", "off"):
@@ -226,9 +231,15 @@ def main():
         p.error("name must not be empty")
 
     load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+    # Precedence: command-line options > environment variables > .env file.
+    user = args.user or os.environ.get("UNIFI_USER")
+    password = args.password or os.environ.get("UNIFI_PASS")
+    if not user:
+        sys.exit("Missing username: pass --user or set UNIFI_USER")
+    if not password:
+        sys.exit("Missing password: pass --password or set UNIFI_PASS")
     try:
-        api = UniFi(os.environ["UNIFI_HOST"], os.environ["UNIFI_USER"], os.environ["UNIFI_PASS"],
-                    os.environ.get("UNIFI_SITE", "default"))
+        api = UniFi(os.environ["UNIFI_HOST"], user, password, os.environ.get("UNIFI_SITE", "default"))
     except KeyError as e:
         sys.exit(f"Missing environment variable {e}")
     pdu = find_pdu(api.devices(), args.mac)

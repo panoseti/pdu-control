@@ -118,6 +118,23 @@ Variables already set in the environment take precedence over `.env`, so you can
 
 `.env` is listed in `.gitignore`, so your credentials will not be committed. Only `.env.example` (placeholder values) is tracked.
 
+### Command-line credentials
+
+Username and password can also be given explicitly. Like `--mac`, these are global options and go **before** the subcommand:
+
+```bash
+./pdu.py --user pdu-admin --password 'your-password' list
+./pdu.py --user pdu-admin on 3      # password still taken from UNIFI_PASS / .env
+```
+
+Precedence, highest first:
+
+1. `--user` / `--password`
+2. Environment variables `UNIFI_USER` / `UNIFI_PASS`
+3. `.env` file
+
+Each value is resolved independently, so you can pass only `--user` and keep the password in `.env`. Note that a password given on the command line is visible to other users via `ps` and is saved in your shell history; prefer `.env` for regular use.
+
 The console uses a self-signed certificate, so the script does not verify TLS certificates.
 
 ## Usage

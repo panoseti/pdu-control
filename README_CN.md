@@ -118,6 +118,23 @@ cp .env.example .env
 
 `.env` 已加入 `.gitignore`，不会被提交到 git；仓库中只保存不含真实密码的 `.env.example`。
 
+### 命令行指定账号
+
+也可以在命令行显式指定用户名和密码。与 `--mac` 一样，它们是全局选项，需要写在子命令**之前**：
+
+```bash
+./pdu.py --user pdu-admin --password 'your-password' list
+./pdu.py --user pdu-admin on 3      # 密码仍从 UNIFI_PASS / .env 读取
+```
+
+优先级从高到低：
+
+1. `--user` / `--password`
+2. 环境变量 `UNIFI_USER` / `UNIFI_PASS`
+3. `.env` 文件
+
+用户名和密码分别独立判断，可以只用 `--user` 指定用户名，密码仍放在 `.env` 里。注意：命令行中的密码会被同一台机器上的其他用户通过 `ps` 看到，也会留在 shell 历史记录中，日常使用建议放在 `.env` 里。
+
 控制台使用自签名证书，脚本默认不校验 TLS 证书。
 
 ## 用法
